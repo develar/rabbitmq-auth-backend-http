@@ -25,9 +25,6 @@
 -export([user_login_authentication/2, user_login_authorization/1,
          check_vhost_access/3, check_resource_access/3]).
 
-%% httpc seems to get racy when using HTTP 1.1
--define(HTTPC_OPTS, [{version, "HTTP/1.0"}]).
-
 %%--------------------------------------------------------------------
 
 description() ->
@@ -54,18 +51,20 @@ user_login_authorization(Username) ->
         Else                          -> Else
     end.
 
-check_vhost_access(#auth_user{username = Username}, VHost, _Sock) ->
-    bool_req(vhost_path, [{username, Username},
-                          {vhost,    VHost}]).
+check_vhost_access(#auth_user{}, _VHost, _Sock) ->
+  true.
 
 check_resource_access(#auth_user{username = Username},
                       #resource{virtual_host = VHost, kind = Type, name = Name},
                       Permission) ->
-    bool_req(resource_path, [{username,   Username},
+  case Type == list_to_atom("queue") of
+      true -> true;
+      false -> bool_req(resource_path, [{username,   Username},
                              {vhost,      VHost},
                              {resource,   Type},
                              {name,       Name},
-                             {permission, Permission}]).
+                             {permission, Permission}])
+    end.
 
 %%--------------------------------------------------------------------
 
@@ -81,7 +80,7 @@ http_get(Path) ->
     {host, Host} = lists:keyfind(host, 1, URI),
     {port, Port} = lists:keyfind(port, 1, URI),
     HostHdr = rabbit_misc:format("~s:~b", [Host, Port]),
-    case httpc:request(get, {Path, [{"Host", HostHdr}]}, ?HTTPC_OPTS, []) of
+    case httpc:request(get, {Path, [{"Host", HostHdr}]}, [], []) of
         {ok, {{_HTTP, Code, _}, _Headers, Body}} ->
             case Code of
                 200 -> case parse_resp(Body) of
